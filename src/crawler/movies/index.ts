@@ -1,3 +1,3 @@
-import FlixHQ from "./flixhq";
+import CineGO from "./cinego";
 
-export default { FlixHQ };
+export default { CineGO };

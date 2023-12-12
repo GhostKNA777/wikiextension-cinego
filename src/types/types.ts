@@ -18,8 +18,9 @@ export enum Filter {
 
 export enum StreamingServers {
     UpCloud = 'UpCloud',
-    VidCloud = 'Vidcloud',
-    MixDrop = 'MixDrop',
+    MegaCloud = 'MegaCloud',
+    Upstream ='Upstream', //Old no working
+    MixDrop ='MixDrop',//Old no working
 }
 
 export interface ISliderDetail {
@@ -41,6 +42,7 @@ export interface IMovieResult {
     title: string,
     url?: string,
     image?: string,
+    quality?: string, //HD,HDRip,SD,CAM,TS
     releaseDate?: string | null,
     type?: MovieType,
     [x: string]: unknown,

@@ -18,12 +18,12 @@ import {
     StreamingServers
 } from "../../types/types";
 import { setMovieData, setMovieInfo } from "../../utils";
-import { MixDrop, VidCloud } from '../../extractors';
+import { MixDrop, MegaCloud } from '../../extractors';
 
-class FlixHQ {
-    readonly name = 'FlixHQ';
-    protected baseUrl = 'https://flixhq.to';
-    protected classPath = 'MOVIES.FlixHQ';
+class CineGO {
+    readonly name = 'CineGO';
+    protected baseUrl = 'https://cinego.tv';
+    protected classPath = 'MOVIES.CineGO';
     protected supportedTypes = [MovieType.MOVIE, MovieType.TVSERIES];
 
     private fetchSlider = ($: CheerioAPI, slider: ISlider[]) => {
@@ -282,7 +282,7 @@ class FlixHQ {
 
     private fetchTvShowSeasons = async (id: string): Promise<CheerioAPI> => {
         try {
-            const { data } = await axios.get(`${this.baseUrl}/ajax/v2/tv/seasons/${id}`);
+            const { data } = await axios.get(`${this.baseUrl}/ajax/movie/seasons/${id}`);
             return load(data);
         } catch (err) {
             throw new Error((err as Error).message);
@@ -291,7 +291,7 @@ class FlixHQ {
 
     private fetchTvShowEpisodes = async (seasonsId: string): Promise<CheerioAPI> => {
         try {
-            const { data } = await axios.get(`${this.baseUrl}/ajax/v2/season/episodes/${seasonsId}`);
+            const { data } = await axios.get(`${this.baseUrl}/ajax/movie/season/episodes/${seasonsId}`);
             return load(data);
         } catch (err) {
             throw new Error((err as Error).message);
@@ -301,26 +301,33 @@ class FlixHQ {
     private fetchTvShowEpisodeInfo = async (seasonId: string, currentSeason: number, episodes: IMovieEpisode[]): Promise<void> => {
         const $ = await this.fetchTvShowEpisodes(seasonId);
 
-        $(`.nav > .nav-item`).map((_, el) => {
-            const episode: IMovieEpisode = {
-                id: $(el).find('a').attr('data-id')!,
-                title: $(el).find('a').attr('title')!,
-                episode: parseInt($(el).find('a').attr('title')!.split(':')[0].slice(3).trim()),
-                season: currentSeason,
-                url: `${this.baseUrl}/ajax/v2/episode/servers/${$(el).find('a').attr('data-id')}`,
+        
+        $(`div`).map((_, el) => {
+            const id = $(el).find('.ep-item').attr('data-id');
+            if (id != undefined){
+                const episode: IMovieEpisode = {
+                    id: $(el).find('.ep-item').attr('data-id')!,
+                    title: $(el).find('.ep-item > .is-info > span:nth-child(2)').text()!,
+                    season: currentSeason,
+                    episode: parseInt($(el).find('.ep-item > .is-info > span:nth-child(1)').text().replace("Episode ", "")!),
+                    url: `${this.baseUrl}/ajax/movie/episode/servers/${$(el).find('a').attr('data-id')}`,
+                }
+    
+                episodes.push(episode);
             }
-
-            episodes.push(episode);
+            
         });
     }
 
     private fetchTvShowSeasonInfo = async (uid: string, episodes: IMovieEpisode[]): Promise<void> => {
         const $ = await this.fetchTvShowSeasons(uid);
 
-        const seasonIds = $('.slt-seasons-dropdown > .dropdown-menu > a')
+        const seasonIds = $('.is-seasons > .dropdown-menu > a')
             .map((_, el) => $(el)
                 .attr('data-id'))
             .get();
+
+            console.log(seasonIds);
 
         let currentSeason = 1;
         for (const id of seasonIds) {
@@ -350,16 +357,26 @@ class FlixHQ {
             const { data } = await axios.get(`${this.baseUrl}/${mediaId}`);
             const $ = load(data);
 
-            const uid = $('.watch_block').attr('data-id')!;
+            const uid = $('.film-rating').attr('data-movie-id')!;
+            console.log(uid);
 
             setMovieInfo($, movieInfo, this.baseUrl);
 
             if (movieInfo.type === MovieType.MOVIE) {
+                const { data } = await axios.get(`${this.baseUrl}/watch-${mediaId}`);
+                const $ = load(data);
+                const uid = $('script').text()!;
+                const regex = /episodeId: (.+)/;
+                const match = uid.match(regex);
+                const episodeId = match ? match[0].replace('episodeId: \'', '').replace('\',', '') : null;
+
+                //console.log(episodeId); // Output: 1387783
+
                 movieInfo.episodes = [
                     {
-                        id: uid,
+                        id: episodeId!,
                         title: `${movieInfo.title} Movie`,
-                        url: `${this.baseUrl}/ajax/movie/episodes/${uid}`,
+                        url: `${this.baseUrl}/ajax/movie/episodes/${episodeId}`,
                     }
                 ];
 
@@ -375,20 +392,22 @@ class FlixHQ {
 
     fetchEpisodeServers = async (mediaId: string, episodeId: string): Promise<IEpisodeServer[]> => {
         if (!mediaId.includes('movie')) {
-            episodeId = `${this.baseUrl}/ajax/v2/episode/servers/${episodeId}`;
+            episodeId = `${this.baseUrl}/ajax/movie/episode/servers/${episodeId}`;
         } else {
-            episodeId = `${this.baseUrl}/ajax/movie/episodes/${episodeId}`;
+            episodeId = `${this.baseUrl}/ajax/movie/episode/servers/${episodeId}`;
         }
 
+        console.log(episodeId);
         try {
             const { data } = await axios.get(episodeId);
             const $ = load(data);
 
-            const servers = $('.nav > .nav-item').map((_, el) => {
+            const servers = $('.dropdown-item').map((_, el) => {
+
                 const server: IEpisodeServer = {
-                    id: mediaId.includes('movie') ? $(el).find('a').attr('data-linkid')! : $(el).find('a').attr('data-id')!,
-                    name: $(el).find('a').find('span').text(),
-                    url: `${this.baseUrl}${$(el).find('a').attr('href')}`,
+                    id: mediaId.includes('movie') ? $(el).attr('data-id')! : $(el).attr('data-id')!,
+                    name: $(el).find('div').find('div').text().replace("Server ", ""),
+                    url: `${this.baseUrl}/ajax/movie/episode/server/sources/${mediaId.includes('movie') ? $(el).attr('data-id')! : $(el).attr('data-id')}`!,
                 }
 
                 return server;
@@ -405,20 +424,12 @@ class FlixHQ {
             const serverUrl = new URL(episodeId);
 
             switch (server) {
-                case StreamingServers.MixDrop:
+                case StreamingServers.MegaCloud:
                     return {
                         headers: {
                             Referer: serverUrl.href,
                         },
-                        ...(await new MixDrop().extract(serverUrl)),
-                    }
-
-                case StreamingServers.VidCloud:
-                    return {
-                        headers: {
-                            Referer: serverUrl.href,
-                        },
-                        ...(await new VidCloud().extract(serverUrl, true)),
+                        ...(await new MegaCloud().extract(serverUrl)),
                     }
 
                 case StreamingServers.UpCloud:
@@ -426,7 +437,7 @@ class FlixHQ {
                         headers: {
                             Referer: serverUrl.href,
                         },
-                        ...(await new VidCloud().extract(serverUrl)),
+                        ...(await new MegaCloud().extract(serverUrl)),
                     }
 
                 default:
@@ -434,7 +445,7 @@ class FlixHQ {
                         headers: {
                             Referer: serverUrl.href,
                         },
-                        ...(await new MixDrop().extract(serverUrl)),
+                        ...(await new MegaCloud().extract(serverUrl)),
                     }
             }
         }
@@ -447,8 +458,8 @@ class FlixHQ {
             if (i === -1) throw new Error(`Server ${server} not found.`);
 
             // Send request to the streaming server to get the video url.
-            const { data } = await axios.get(`${this.baseUrl}/ajax/sources/${servers[i].id}`);
-            const serverUrl: URL = new URL(data.link);
+            const { data } = await axios.get(`${this.baseUrl}/ajax/movie/episode/server/sources/${servers[i].id}`);
+            const serverUrl: URL = new URL(data.data.link);
 
             return await this.fetchEpisodeSources(mediaId, serverUrl.href, server);
         } catch (err) {
@@ -466,13 +477,13 @@ class FlixHQ {
         query = query.replaceAll(' ', '-');
 
         try {
-            const { data } = await axios.get(`${this.baseUrl}/search/${query}?page=${page}`);
+            const { data } = await axios.get(`${this.baseUrl}/search?keyword=${query}&page=${page}`);
             const $ = load(data);
 
-            const navSelector = '.pre-pagination > nav > ul';
+            const navSelector = '.section-pagination > nav > ul';
             searchResult.hasNextPage = $(navSelector).length > 0 ? !$(navSelector).children().last().hasClass('active') : false;
 
-            $('.film_list-wrap > .flw-item').each((_, el) => {
+            $('.item-film').each((_, el) => {
                 searchResult.results.push(setMovieData($(el), this.baseUrl));
             });
 
@@ -482,7 +493,9 @@ class FlixHQ {
         }
     }
 
-    fetchFiltersList = async (): Promise<IMovieFilter> => {
+    //Dont working - MSG Error: Oops! Something went wrong. Please try again later.
+
+    /*fetchFiltersList = async (): Promise<IMovieFilter> => {
         const filtersList: IMovieFilter = {
             types: [],
             qualities: [],
@@ -579,7 +592,7 @@ class FlixHQ {
         } catch (err) {
             throw new Error((err as Error).message);
         }
-    }
+    }*/
 }
 
-export default FlixHQ;
+export default CineGO;
